@@ -35,14 +35,25 @@ def add_to_bucket(prefix, issue):
             else:
                 issues_bucket[key] = 1
 
+def highlight(x):
+    focus = ["bug", "priority: must-fix", "total"]
+    return ['background-color: yellow' if x.name in focus else '' for v in x]
+
 def print_html():
     df = pd.DataFrame(index=prefix_keys, columns=['total'] + active_labels)
     for i in sorted(issues_bucket.keys()):
         key = i.split('_')[0]
         label = i.split('_')[1]
         df[label][key]= issues_bucket[i]
-    html = df.fillna(0).to_html('report.html')
+    df_report = df.fillna(0).transpose()
+    html = df_report.style.set_properties(**
+                                          {'border-style': 'solid',
+                                            'color': 'black'}).apply(highlight, axis=1).render()
+    f = open("report.html", "w")
+    f.write(html)
+    #html = df_report.to_html('report.html')
     os.system("start report.html")
+
 
 for issue in all_issues:
     if issue.created_at >= datetime.strptime(start_date, '%Y-%m-%d') and issue.created_at < datetime.strptime(end_date, '%Y-%m-%d'):
