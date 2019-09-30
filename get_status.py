@@ -1,25 +1,36 @@
 from github import Github
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import pandas as pd
 import os
+import argparse
 
 
-# Use your Own Github api key
-github = Github("your api key")
-repo_name ='ckan'
-milestone_name = 'Phase 1'
-start_date = '2019-09-23'
-end_date = '2019-09-30'
-fullname = 'InstituteforDiseaseModeling/{}'.format(repo_name)
-repo = [r for r in github.get_user().get_repos() if r.full_name == fullname][0]
-milestone = [m for m in repo.get_milestones(state='open') if m.title == milestone_name][0]
-labels = [ l for l in  repo.get_labels()]
-all_issues = repo.get_issues(milestone=milestone, state="all")
 prefix_keys = ["previous week", "current remaining", "new", "closed"]
-active_labels = []
 
-issues_bucket ={}
-def add_to_bucket(prefix, issue):
+def get_report(apikey):
+    github = Github(apikey)
+    repo_names =['ckan', 'dst-era5-weather-data-tools']
+    today = date.today()
+    this_monday = (today + timedelta(days=-today.weekday()))
+    start_date = (this_monday + timedelta(days=-7)).strftime("%Y-%m-%d")
+    end_date = this_monday.strftime("%Y-%m-%d")
+    html ="<h1>Github Status Report  {}<h1> <br>".format(end_date)
+    for repo_name in repo_names:
+        fullname = 'InstituteforDiseaseModeling/{}'.format(repo_name)
+        repo = [r for r in github.get_user().get_repos() if r.full_name == fullname][0]
+        milestones = [m for m in repo.get_milestones(state='open')]
+        for milestone in milestones:
+            labels = [ l for l in repo.get_labels()]
+            all_issues = repo.get_issues(milestone=milestone, state="all")
+            active_labels = []
+            buckets = count_issues(all_issues, start_date, end_date, labels, active_labels)
+            html = print_html(buckets, html, active_labels, "{} - {}".format(repo.name, milestone.title))
+        # get items without milestone, a.k.a. untriaged issues
+        untriaged_issues = repo.get_issues(milestone='none', state='open')
+        html += "<hr><h2>{} - Untriaged: {} </h2>".format(repo.name, str(untriaged_issues.totalCount))
+    save(html)
+
+def add_to_bucket(prefix, issue, issues_bucket, labels, active_labels):
     key_total = prefix + "total"
     if key_total in issues_bucket:
         issues_bucket[key_total] += 1
@@ -39,39 +50,50 @@ def highlight(x):
     focus = ["bug", "priority: must-fix", "total"]
     return ['background-color: yellow' if x.name in focus else '' for v in x]
 
-def print_html():
+def print_html(issues_bucket, html, active_labels, header):
     df = pd.DataFrame(index=prefix_keys, columns=['total'] + active_labels)
     for i in sorted(issues_bucket.keys()):
         key = i.split('_')[0]
         label = i.split('_')[1]
         df[label][key]= issues_bucket[i]
     df_report = df.fillna(0).transpose()
-    html = df_report.style.set_properties(**
+    new_html = html + " <hr> "
+    new_html += "<h2>{}</h2>".format(header)
+    new_html += df_report.style.set_properties(**
                                           {'border-style': 'solid',
-                                            'color': 'black'}).apply(highlight, axis=1).render()
+                                           'color': 'black'}).apply(highlight, axis=1).render()
+    return new_html
+
+
+def save(html):
     f = open("report.html", "w")
     f.write(html)
     #html = df_report.to_html('report.html')
     os.system("start report.html")
 
+def count_issues (all_issues, start_date, end_date, labels, active_labels):
+    issues_bucket = {}
+    for issue in all_issues:
+        if issue.created_at >= datetime.strptime(start_date, '%Y-%m-%d') and issue.created_at < datetime.strptime(end_date, '%Y-%m-%d'):
+            prefix ="new_"
+            add_to_bucket(prefix, issue, issues_bucket, labels, active_labels)
+        if issue.created_at < datetime.strptime(start_date, '%Y-%m-%d') and \
+                (issue.closed_at is None or  issue.closed_at >= datetime.strptime(start_date, '%Y-%m-%d')):
+            prefix ="previous week_"
+            add_to_bucket(prefix, issue, issues_bucket, labels, active_labels)
+        if issue.closed_at is not None and \
+            issue.closed_at >= datetime.strptime(start_date, '%Y-%m-%d'):
+            prefix = "closed_"
+            add_to_bucket(prefix, issue, issues_bucket, labels, active_labels)
+        if issue.closed_at is None:
+            prefix = "current remaining_"
+            add_to_bucket(prefix, issue, issues_bucket, labels, active_labels)
+    return issues_bucket
 
-for issue in all_issues:
-    if issue.created_at >= datetime.strptime(start_date, '%Y-%m-%d') and issue.created_at < datetime.strptime(end_date, '%Y-%m-%d'):
-        prefix ="new_"
-        add_to_bucket(prefix, issue)
-    if issue.created_at < datetime.strptime(start_date, '%Y-%m-%d') and \
-            (issue.closed_at is None or  issue.closed_at >= datetime.strptime(start_date, '%Y-%m-%d')):
-        prefix ="previous week_"
-        add_to_bucket(prefix, issue)
-    if issue.closed_at is not None and \
-        issue.closed_at >= datetime.strptime(start_date, '%Y-%m-%d'):
-        prefix = "closed_"
-        add_to_bucket(prefix, issue)
-    if issue.closed_at is None:
-        prefix = "current remaining_"
-        add_to_bucket(prefix, issue)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--apikey", help="your github api key")
+    args = parser.parse_args()
+    get_report(args.apikey)
 
-for i in sorted(issues_bucket.keys()):
-    print(i, ":", str(issues_bucket[i]))
 
-print_html()
