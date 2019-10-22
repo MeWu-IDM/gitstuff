@@ -5,11 +5,11 @@ import os
 import argparse
 
 
-prefix_keys = ["previous week", "current remaining", "new", "closed"]
+prefix_keys = ["previous week", "new", "closed", "current remaining"]
 
 def get_report(apikey):
     github = Github(apikey)
-    repo_names =['ckan', 'dst-era5-weather-data-tools']
+    repo_names =['ckan', 'dst-era5-weather-data-tools', 'dse-utility-library']
     today = date.today()
     this_monday = (today + timedelta(days=-today.weekday()))
     start_date = (this_monday + timedelta(days=-7)).strftime("%Y-%m-%d")
@@ -22,12 +22,13 @@ def get_report(apikey):
         for milestone in milestones:
             labels = [ l for l in repo.get_labels()]
             all_issues = repo.get_issues(milestone=milestone, state="all")
-            active_labels = []
+            active_labels = ['not labeled']
             buckets = count_issues(all_issues, start_date, end_date, labels, active_labels)
             html = print_html(buckets, html, active_labels, "{} - {}".format(repo.name, milestone.title))
         # get items without milestone, a.k.a. untriaged issues
         untriaged_issues = repo.get_issues(milestone='none', state='open')
         html += "<hr><h2>{} - Untriaged: {} </h2>".format(repo.name, str(untriaged_issues.totalCount))
+        html += '<hr style="border-top: 3px solid red;">'
     save(html)
 
 def add_to_bucket(prefix, issue, issues_bucket, labels, active_labels):
@@ -36,6 +37,12 @@ def add_to_bucket(prefix, issue, issues_bucket, labels, active_labels):
         issues_bucket[key_total] += 1
     else:
         issues_bucket[key_total] = 1
+    if len(issue.labels) == 0:
+        key = prefix + 'not labeled'
+        if key in issues_bucket:
+            issues_bucket[key] += 1
+        else:
+            issues_bucket[key] = 1
     for l in labels:
         key = prefix + l.name
         if l in issue.labels:
