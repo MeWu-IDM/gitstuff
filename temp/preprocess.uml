@@ -1,0 +1,69 @@
+@startuml
+
+title Preprocess
+
+object "Download DHS" as L {
+  input:
+  output:
+
+}
+
+object "Download NL	... (see Jean16 docs)" as N {
+  input: 
+  output:
+  
+}
+
+
+object "Ingest DHS:	\nPull HH indicator data Transform indicators as needed Aggregate HH to cluster-level Write cluster coordinates from DHS file; Write DHS indicators to .txt" as AA {
+  input: GE DHS file
+  output: ../data/output/DHS/nigeria/locs/cluster_coords.txt
+
+}
+
+
+object "Ingest DHS:	Translate .txt to .np Filter out clusters that are erroneously located on (0,0); clusters missing RS data." as BB {
+  input: # Retrieve DHS data [os.path.join('../data/output/DHS'),country_majuscule+' '+year+'DHS_'+modelvar+' (Cluster).txt']
+  output: # Save .npy files names = ['lats', 'lons', 'assets', 'nightlights', 'households']
+}
+
+
+object "Create location files for image sampling (input to extract features among other things)	One-time: generate custom download_locs.txt files for different sampling scheme" as CC {
+  input: 
+  data/output/whole_country/nigeria/downloaded_locs_dense.txt 
+  or: data/output/whole_country/pakistan/downloaded_locs_1km.txt
+  data/output/DHS/nigeria/locs/cluster_coords.npy
+  output: 
+  data/output/DHS/nigeria/locs/downloaded_locs_d{N}km.txt 
+  data/output/DHS/nigeria/locs/downloaded_locs_d{N}km.pkl
+
+}
+
+object "Re-grid and bin nightlights to GSM grid	Clip and polygonize NL raster into a shape file" as O {
+  input: NL raster: P:\socialMapping\data\input\Nightlights\2013\F182013.v4c_web.stable_lights.avg_vis.tif extent: N2-16, E2-16
+  output: NL shape file
+}
+
+
+object "Re-grid and bin nightlights to GSM grid	Run weighted averages calculation (at scale)" as P {
+  input: list of GSM images: P:\socialMapping\data\output\whole_country\nigeria\locs??? NL shape file: P:\socialMapping\data\input\Nightlights\2013\Nigeria\F182013.v4c_web.stable_lights.avg_vis_N2-N16-E2-E16.shp
+  output: list of GSM images with NL bins and weighted average values
+}
+
+object "Build nightlight training dataset	Spatial subsetting to survey buffered locations Rebin nightlights according to GMM Up/downsample imagery to balance nightlight intensities in training data" as Q {
+  input: data/input/Nightlights/2013/ F182013.v4c_web.stable_lights.avg_vis_N2-N16-E2-E16_GSM_weighted_averages.csv This is the GSM-regridded file that Dejan made. Preprocessing includes rebinning (rounding) OLS nightlights to integer values and resetting the category labels to (0,1,2).
+  output: data/input/Nightlights/2013 nightlights_GSMregridded_*.csv Output files include versions with different geographical subsetting, different up/downsampling schemes.
+}
+
+
+L --|> AA
+AA --|> BB
+BB --|> CC
+N --|> O
+O --|> P
+P --|> Q
+
+
+
+
+@enduml
